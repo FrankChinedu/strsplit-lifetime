@@ -1,12 +1,12 @@
 // #![warn(missing_debug_implementations, missing_docs)]
 
-struct StrSplit<'haystack, 'delimeter> {
+struct StrSplit<'haystack, D> {
     remainder: Option<&'haystack str>,
-    delimeter: &'delimeter str,
+    delimeter: D,
 }
 
-impl<'haystack, 'delimeter> StrSplit<'haystack, 'delimeter> {
-    pub fn new(haystack: &'haystack str, delimeter: &'delimeter str) -> Self {
+impl<'haystack, D> StrSplit<'haystack, D> {
+    pub fn new(haystack: &'haystack str, delimeter: D) -> Self {
         Self {
             remainder: Some(haystack),
             delimeter,
@@ -14,26 +14,44 @@ impl<'haystack, 'delimeter> StrSplit<'haystack, 'delimeter> {
     }
 }
 
-impl<'haystack, 'delimeter> Iterator for StrSplit<'haystack, 'delimeter> {
+trait Delimeter {
+    fn find_next(&self, s: &str) -> Option<(usize, usize)>;
+}
+
+impl<'haystack, D> Iterator for StrSplit<'haystack, D>
+where
+    D: Delimeter,
+{
     type Item = &'haystack str;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(ref mut remainder) = self.remainder {
-            if let Some(next_delim) = remainder.find(self.delimeter) {
-                let until_delimeter = &remainder[..next_delim];
-                *remainder = &remainder[(next_delim + self.delimeter.len())..];
-                Some(until_delimeter)
-            } else {
-                self.remainder.take()
-            }
+        let remainder = self.remainder.as_mut()?;
+        if let Some((delim_start, delim_end)) = self.delimeter.find_next(remainder) {
+            let until_delimeter = &remainder[..delim_start];
+            *remainder = &remainder[delim_end..];
+            Some(until_delimeter)
         } else {
-            None
+            self.remainder.take()
         }
     }
 }
 
-fn until_char(s: &str, c: char) -> &str {
-    StrSplit::new(s, &format!("{}", c))
+impl Delimeter for &str {
+    fn find_next(&self, s: &str) -> Option<(usize, usize)> {
+        s.find(self).map(|start| (start, start + self.len()))
+    }
+}
+
+impl Delimeter for char {
+    fn find_next(&self, s: &str) -> Option<(usize, usize)> {
+        s.char_indices()
+            .find(|(_, c)| c == self)
+            .map(|(start, _)| (start, start + 1))
+    }
+}
+
+pub fn until_char(s: &str, c: char) -> &str {
+    StrSplit::new(s, c)
         .next()
         .expect("StrSplit always gives at least one result")
 }
